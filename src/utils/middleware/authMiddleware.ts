@@ -12,6 +12,5 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
     return res.status(401).json({ error: 'Invalid token' })
   }
 
-  // Token is valid, continue to the next middleware or route handler
   next()
 }
