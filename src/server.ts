@@ -1,7 +1,7 @@
 import express from 'express'
 import dotenv from 'dotenv'
 import { authMiddleware } from './utils/middleware/authMiddleware'
-import { rateLimiterMiddlewareForIp, rateLimiterMiddlewareForToken } from './utils/middleware/rateLimiter'
+import { rateLimiterMiddleware } from './utils/middleware/rateLimiter'
 
 dotenv.config()
 const app = express()
@@ -9,20 +9,20 @@ app.use(express.json())
 
 const PORT = process.env.PORT || 3000
 
-// Public route
-app.get('/public', rateLimiterMiddlewareForIp, async (req, res) => {
+// Public route - Weight = 1
+app.get('/public', rateLimiterMiddleware(1), async (req, res) => {
   return res.status(200).json({ message: 'Public' })
 })
 
-// Private route - First check if the token is valid, then it check how many requests were made
-app.get('/private', authMiddleware, rateLimiterMiddlewareForToken, async (req, res) => {
+// Private route - Weight = 2
+app.get('/private', authMiddleware, rateLimiterMiddleware(2), async (req, res) => {
   return res.status(200).json({ message: 'Private' })
 })
 
-/* app.get('/flushRedis', rateLimiterMiddlewareForIp, async (req, res) => {
-  await redis.flushdb()
-  return res.status(200).json({ message: 'Successs' })
-}) */
+// PrivateHeavy route - Weight = 5
+app.get('/privateHeavy', authMiddleware, rateLimiterMiddleware(5), async (req, res) => {
+  return res.status(200).json({ message: 'Private' })
+})
 
 app.listen(PORT, () => {
   console.log(`Server running on port http://localhost:${PORT}`)
