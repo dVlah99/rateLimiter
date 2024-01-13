@@ -5,16 +5,13 @@ import { RateLimitError } from '../entities/rateLimitError'
 //const tokenLimit = (process.env.TOKEN_LIMIT as unknown as number) || 200
 const hourInSeconds = 30
 
-export const rateLimiterMiddleware = async (req: Request, res: Response, next: NextFunction) => {
-  //const { ip, userToken } = req
+export const rateLimiterMiddlewareForIp = async (req: Request, res: Response, next: NextFunction) => {
   const { ip } = req
 
-  //const tokenKey = `token:${'TEST'}`
   const ipLimit = (process.env.IP_LIMIT as unknown as number) || 100
 
   const ipKey = `ip:${ip}`
-  const ipCounter = await numberOfCalls(ipKey)
-  const validNumberOfCalls = await checkCounter(ipCounter, ipLimit)
+  const validNumberOfCalls = await checkLimit(ipKey, ipLimit)
 
   if (!validNumberOfCalls) {
     const ipTtl = await redis.ttl(ipKey)
@@ -26,35 +23,45 @@ export const rateLimiterMiddleware = async (req: Request, res: Response, next: N
     )
   }
 
-  const incrementedCount = await redis.incr(ipKey)
-  incrementedCount >= ipLimit ? redis.expire(ipKey, hourInSeconds) : false
-
-  //const [tokenCount, ipCount] = await Promise.all([redis.incr(tokenKey), redis.incr(ipKey)])
-  //const [ipCount, isNewKey] = await Promise.all([redis.incr(ipKey), redis.expire(ipKey, hourInSeconds)])
-  //const tokenTtl = await redis.ttl(tokenKey)
-
-  /*   if (tokenCount > tokenLimit) {
-    return res.status(429).json({
-      error: 'Rate limit exceeded',
-      message: `Token rate limit exceeded. Try again in ${tokenTtl} seconds.`,
-    })
-  } */
+  await incrementAndSetExpireTime(ipKey, ipLimit)
 
   next()
 }
 
-const checkCounter = async (ipCounter: number, ipLimit: number): Promise<boolean> => {
-  if ((ipCounter as number) >= (ipLimit as number)) {
+export const rateLimiterMiddlewareForToken = async (req: Request, res: Response, next: NextFunction) => {
+  //const { userToken } = req
+
+  const tokenKey = `token:${'test'}`
+  const tokenLimit = (process.env.TOKEN_LIMIT as unknown as number) || 100
+
+  const canMakeRequest = await checkLimit(tokenKey, tokenLimit)
+
+  if (!canMakeRequest) {
+    const tokenTtl = await redis.ttl(tokenKey)
+    return res.status(429).json(
+      new RateLimitError({
+        error: 'Rate limit exceeded',
+        message: `Token rate limit exceeded. Try again in ${tokenTtl} seconds.`,
+      }),
+    )
+  }
+
+  await incrementAndSetExpireTime(tokenKey, tokenLimit)
+
+  next()
+}
+
+const checkLimit = async (key: string, limit: number): Promise<boolean> => {
+  const requestCount = await redis.get(key)
+  const requestCountFormatted = requestCount === null ? 0 : parseInt(requestCount, 10)
+
+  if ((requestCountFormatted as number) >= (limit as number)) {
     return false
   }
   return true
 }
 
-const numberOfCalls = async (ipKey: string): Promise<number> => {
-  const ipCnt = await redis.get(ipKey)
-  if (!ipCnt) {
-    return 0
-  } else {
-    return parseInt(ipCnt, 10)
-  }
+const incrementAndSetExpireTime = async (key: string, limit: number) => {
+  const incrementedCount = await redis.incr(key)
+  incrementedCount >= limit ? redis.expire(key, hourInSeconds) : false
 }

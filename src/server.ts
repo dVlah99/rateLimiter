@@ -1,7 +1,7 @@
 import express from 'express'
-import { authMiddleware } from './utils/middleware/authMiddleware'
 import dotenv from 'dotenv'
-import { rateLimiterMiddleware } from './utils/rateLimiter'
+import { authMiddleware } from './utils/middleware/authMiddleware'
+import { rateLimiterMiddlewareForIp, rateLimiterMiddlewareForToken } from './utils/rateLimiter'
 
 dotenv.config()
 const app = express()
@@ -10,12 +10,12 @@ app.use(express.json())
 const PORT = process.env.PORT
 
 // Public route
-app.get('/public', rateLimiterMiddleware, async (req, res) => {
+app.get('/public', rateLimiterMiddlewareForIp, async (req, res) => {
   return res.status(200).json({ message: 'Public' })
 })
 
 // Private route
-app.get('/private', rateLimiterMiddleware, authMiddleware, async (req, res) => {
+app.get('/private', authMiddleware, rateLimiterMiddlewareForToken, async (req, res) => {
   return res.status(200).json({ message: 'Private' })
 })
 
