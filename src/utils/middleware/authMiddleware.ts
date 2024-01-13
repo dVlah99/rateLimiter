@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
+import jwt from 'jsonwebtoken'
 
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   const token = req.headers['authorization']
@@ -7,10 +8,11 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
-  const isValidToken = true
-  if (!isValidToken) {
-    return res.status(401).json({ error: 'Invalid token' })
-  }
+  try {
+    jwt.verify(token, process.env.SECRET as jwt.Secret)
 
-  next()
+    next()
+  } catch (error) {
+    return res.status(403).send({ message: 'Invalid token!' })
+  }
 }

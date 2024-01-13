@@ -14,7 +14,7 @@ app.get('/public', rateLimiterMiddlewareForIp, async (req, res) => {
   return res.status(200).json({ message: 'Public' })
 })
 
-// Private route
+// Private route - First check if the token is valid, then it check how many requests were made
 app.get('/private', authMiddleware, rateLimiterMiddlewareForToken, async (req, res) => {
   return res.status(200).json({ message: 'Private' })
 })
