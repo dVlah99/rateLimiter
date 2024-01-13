@@ -19,6 +19,11 @@ app.get('/private', authMiddleware, rateLimiterMiddlewareForToken, async (req, r
   return res.status(200).json({ message: 'Private' })
 })
 
+/* app.get('/flushRedis', rateLimiterMiddlewareForIp, async (req, res) => {
+  await redis.flushdb()
+  return res.status(200).json({ message: 'Successs' })
+}) */
+
 app.listen(PORT, () => {
   console.log(`Server running on port http://localhost:${PORT}`)
 })

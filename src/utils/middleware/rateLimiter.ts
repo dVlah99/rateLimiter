@@ -6,6 +6,8 @@ export const rateLimiterMiddlewareForIp = async (req: Request, res: Response, ne
   const { ip } = req
   const ipKey = `ip:${ip}`
 
+  await checkIfKeyExistAndSetExpirationTime(ipKey)
+
   const ipLimit = parseInt(process.env.IP_LIMIT || '100', 10)
   const canMakeRequest = await checkLimit(ipKey, ipLimit)
 
@@ -20,14 +22,17 @@ export const rateLimiterMiddlewareForIp = async (req: Request, res: Response, ne
     )
   }
 
-  await incrementRequestCountAndSetExpireTime(ipKey, ipLimit)
+  incrementRequestCount(ipKey)
 
   next()
 }
 
 export const rateLimiterMiddlewareForToken = async (req: Request, res: Response, next: NextFunction) => {
-  // const { userToken } = req;
-  const tokenKey = `token:${'test'}`
+  const token = req.headers['authorization']
+
+  const tokenKey = `jwt:${token}`
+
+  await checkIfKeyExistAndSetExpirationTime(tokenKey)
 
   const tokenLimit = parseInt(process.env.TOKEN_LIMIT || '200', 10)
   const canMakeRequest = await checkLimit(tokenKey, tokenLimit)
@@ -43,7 +48,7 @@ export const rateLimiterMiddlewareForToken = async (req: Request, res: Response,
     )
   }
 
-  await incrementRequestCountAndSetExpireTime(tokenKey, tokenLimit)
+  incrementRequestCount(tokenKey)
 
   next()
 }
@@ -55,10 +60,15 @@ const checkLimit = async (key: string, limit: number): Promise<boolean> => {
   return requestCountFormatted < limit
 }
 
-const incrementRequestCountAndSetExpireTime = async (key: string, limit: number) => {
-  const incrementedCount = await redis.incr(key)
+const incrementRequestCount = async (key: string) => {
+  await redis.incr(key)
+}
 
-  if (incrementedCount >= limit) {
+const checkIfKeyExistAndSetExpirationTime = async (key: string) => {
+  const keyExists = await redis.exists(key)
+
+  if (!keyExists) {
+    await redis.set(key, 0)
     const expirationTime = parseInt(process.env.EXPIRATION_TIME_IN_SECONDS || '3600', 10)
     await redis.expire(key, expirationTime)
   }
