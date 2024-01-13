@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import redis from './redis'
+import { RateLimitError } from '../entities/rateLimitError'
 
 //const tokenLimit = (process.env.TOKEN_LIMIT as unknown as number) || 200
 const hourInSeconds = 30
@@ -12,13 +13,17 @@ export const rateLimiterMiddleware = async (req: Request, res: Response, next: N
   const ipLimit = (process.env.IP_LIMIT as unknown as number) || 100
 
   const ipKey = `ip:${ip}`
-  const ipCounter = await getCountInNumber(ipKey)
-  if ((ipCounter as number) >= (ipLimit as number)) {
+  const ipCounter = await numberOfCalls(ipKey)
+  const validNumberOfCalls = await checkCounter(ipCounter, ipLimit)
+
+  if (!validNumberOfCalls) {
     const ipTtl = await redis.ttl(ipKey)
-    return res.status(429).json({
-      error: 'Rate limit exceeded',
-      message: `IP rate limit exceeded. Try again in ${ipTtl} seconds.`,
-    })
+    return res.status(429).json(
+      new RateLimitError({
+        error: 'Rate limit exceeded',
+        message: `IP rate limit exceeded. Try again in ${ipTtl} seconds.`,
+      }),
+    )
   }
 
   const incrementedCount = await redis.incr(ipKey)
@@ -38,7 +43,14 @@ export const rateLimiterMiddleware = async (req: Request, res: Response, next: N
   next()
 }
 
-const getCountInNumber = async (ipKey: string): Promise<number> => {
+const checkCounter = async (ipCounter: number, ipLimit: number): Promise<boolean> => {
+  if ((ipCounter as number) >= (ipLimit as number)) {
+    return false
+  }
+  return true
+}
+
+const numberOfCalls = async (ipKey: string): Promise<number> => {
   const ipCnt = await redis.get(ipKey)
   if (!ipCnt) {
     return 0
