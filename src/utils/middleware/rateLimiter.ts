@@ -33,7 +33,7 @@ const handleRateLimitExceeded = async (key: string) => {
   throw new RateLimitError({ error: 'Rate limit exceeded', message: errorMessage })
 }
 
-const ipLimiter = async (req: Request, res: Response, weight: number) => {
+const ipLimiter = async (req: Request, weight: number) => {
   const { ip } = req
   const ipKey = `ip:${ip}`
   const ipLimit = Number(process.env.IP_LIMIT) || 100
@@ -47,7 +47,7 @@ const ipLimiter = async (req: Request, res: Response, weight: number) => {
   await incrementRequestCount(ipKey, weight)
 }
 
-const tokenLimiter = async (req: Request, res: Response, weight: number) => {
+const tokenLimiter = async (req: Request, weight: number) => {
   const token = req.headers['authorization']
   const tokenKey = `token:${token}`
   const tokenLimit = Number(process.env.TOKEN_LIMIT) || 200
@@ -64,7 +64,7 @@ const tokenLimiter = async (req: Request, res: Response, weight: number) => {
 const rateLimiterMiddlewareForIpFactory = (weight: number) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await ipLimiter(req, res, weight)
+      await ipLimiter(req, weight)
       next()
     } catch (error) {
       res.status(429).json(error)
@@ -75,7 +75,7 @@ const rateLimiterMiddlewareForIpFactory = (weight: number) => {
 const rateLimiterMiddlewareForTokenFactory = (weight: number) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await tokenLimiter(req, res, weight)
+      await tokenLimiter(req, weight)
       next()
     } catch (error) {
       res.status(429).json(error)
