@@ -33,7 +33,7 @@ const handleRateLimitExceeded = async (key: string) => {
   throw new RateLimitError({ error: 'Rate limit exceeded', message: errorMessage })
 }
 
-const rateLimiterMiddlewareForIp = async (req: Request, res: Response, weight: number) => {
+const ipLimiter = async (req: Request, res: Response, weight: number) => {
   const { ip } = req
   const ipKey = `ip:${ip}`
   const ipLimit = Number(process.env.IP_LIMIT) || 100
@@ -47,7 +47,8 @@ const rateLimiterMiddlewareForIp = async (req: Request, res: Response, weight: n
   await incrementRequestCount(ipKey, weight)
 }
 
-const rateLimiterMiddlewareForToken = async (req: Request, res: Response, weight: number, token: string) => {
+const tokenLimiter = async (req: Request, res: Response, weight: number) => {
+  const token = req.headers['authorization']
   const tokenKey = `token:${token}`
   const tokenLimit = Number(process.env.TOKEN_LIMIT) || 200
 
@@ -60,15 +61,10 @@ const rateLimiterMiddlewareForToken = async (req: Request, res: Response, weight
   await incrementRequestCount(tokenKey, weight)
 }
 
-const rateLimiterMiddlewareFactory = (weight: number) => {
+const rateLimiterMiddlewareForIpFactory = (weight: number) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const token = req.headers['authorization']
-      if (!token) {
-        await rateLimiterMiddlewareForIp(req, res, weight)
-      } else {
-        await rateLimiterMiddlewareForToken(req, res, weight, token)
-      }
+      await ipLimiter(req, res, weight)
       next()
     } catch (error) {
       res.status(429).json(error)
@@ -76,4 +72,17 @@ const rateLimiterMiddlewareFactory = (weight: number) => {
   }
 }
 
-export const rateLimiterMiddleware = rateLimiterMiddlewareFactory
+const rateLimiterMiddlewareForTokenFactory = (weight: number) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await tokenLimiter(req, res, weight)
+      next()
+    } catch (error) {
+      res.status(429).json(error)
+    }
+  }
+}
+
+export const rateLimiterMiddlewareForToken = rateLimiterMiddlewareForTokenFactory
+
+export const rateLimiterMiddlewareForIp = rateLimiterMiddlewareForIpFactory
