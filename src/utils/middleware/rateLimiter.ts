@@ -5,12 +5,11 @@ import { RateLimitError } from '../../entities/rateLimitError'
 const checkLimit = async (key: string, limit: number): Promise<boolean> => {
   const requestCount = await redis.get(key)
   const requestCountFormatted = requestCount ? parseInt(requestCount, 10) : 0
-
   return requestCountFormatted < limit
 }
 
-const incrementRequestCount = async (key: string, weigth: number) => {
-  await redis.incrby(key, weigth)
+const incrementRequestCount = async (key: string, weight: number) => {
+  await redis.incrby(key, weight)
 }
 
 const checkIfKeyExistAndSetExpirationTime = async (key: string) => {
@@ -18,52 +17,47 @@ const checkIfKeyExistAndSetExpirationTime = async (key: string) => {
 
   if (!keyExists) {
     await redis.set(key, 0)
-    const expirationTime = parseInt(process.env.EXPIRATION_TIME_IN_SECONDS || '3600', 10)
+    const expirationTime = Number(process.env.EXPIRATION_TIME_IN_SECONDS) || 3600
     await redis.expire(key, expirationTime)
   }
 }
 
-export const rateLimiterMiddlewareForIp = async (req: Request, res: Response, weigth: number) => {
+const handleRateLimitExceeded = async (res: Response, key: string, ttl: number) => {
+  const errorMessage = `Rate limit exceeded. Try again in ${ttl} seconds.`
+  res.status(429).json(new RateLimitError({ error: 'Rate limit exceeded', message: errorMessage }))
+}
+
+export const rateLimiterMiddlewareForIp = async (req: Request, res: Response, weight: number) => {
   const { ip } = req
   const ipKey = `ip:${ip}`
 
   await checkIfKeyExistAndSetExpirationTime(ipKey)
 
-  const ipLimit = parseInt(process.env.IP_LIMIT || '100', 10)
+  const ipLimit = Number(process.env.IP_LIMIT) || 100
   const canMakeRequest = await checkLimit(ipKey, ipLimit)
 
   if (!canMakeRequest) {
     const ipTtl = await redis.ttl(ipKey)
-
-    throw new RateLimitError({
-      error: 'Rate limit exceeded',
-      message: `Ip rate limit exceeded. Try again in ${ipTtl} seconds.`,
-    })
+    await handleRateLimitExceeded(res, ipKey, ipTtl)
   }
 
-  await incrementRequestCount(ipKey, weigth)
+  await incrementRequestCount(ipKey, weight)
 }
 
-export const rateLimiterMiddlewareForToken = async (req: Request, res: Response, weigth: number) => {
-  const token = req.headers['authorization']
-
-  const tokenKey = `jwt:${token}`
+export const rateLimiterMiddlewareForToken = async (req: Request, res: Response, weight: number, token: string) => {
+  const tokenKey = `token:${token}`
 
   await checkIfKeyExistAndSetExpirationTime(tokenKey)
 
-  const tokenLimit = parseInt(process.env.TOKEN_LIMIT || '200', 10)
+  const tokenLimit = Number(process.env.TOKEN_LIMIT) || 200
   const canMakeRequest = await checkLimit(tokenKey, tokenLimit)
 
   if (!canMakeRequest) {
     const tokenTtl = await redis.ttl(tokenKey)
-
-    throw new RateLimitError({
-      error: 'Rate limit exceeded',
-      message: `Token rate limit exceeded. Try again in ${tokenTtl} seconds.`,
-    })
+    await handleRateLimitExceeded(res, tokenKey, tokenTtl)
   }
 
-  await incrementRequestCount(tokenKey, weigth)
+  await incrementRequestCount(tokenKey, weight)
 }
 
 const rateLimiterMiddlewareFactory = (weight: number) => {
@@ -73,11 +67,11 @@ const rateLimiterMiddlewareFactory = (weight: number) => {
       if (!token) {
         await rateLimiterMiddlewareForIp(req, res, weight)
       } else {
-        await rateLimiterMiddlewareForToken(req, res, weight)
+        await rateLimiterMiddlewareForToken(req, res, weight, token)
       }
       next()
     } catch (error) {
-      res.status(429).json(error)
+      next(error)
     }
   }
 }
